@@ -1,9 +1,18 @@
-name: GitHub Actions Demo
+# name: GitHub Actions Demo
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+# on:
+#   push:
+#     branches:
+#       - main
+
+name: Store PR Commit Messages
+
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - main
+    
 jobs:
   Explore-GitHub-Actions:
     runs-on: run2
@@ -20,3 +29,40 @@ jobs:
           ls ${{ github.workspace }}
       - run: echo "🍏 This job's status is ${{ job.status }}."
 
+  collect-commit-messages:
+    if: github.event.pull_request.merged == true
+    runs-on: run2
+
+    steps:
+      - name: Checkout the repo
+        uses: actions/checkout@v4
+
+      - name: Fetch PR commits
+        id: fetch_commits
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          echo "Fetching commits for PR #$PR_NUMBER"
+
+          # Use GitHub CLI to get all commits in the PR
+          COMMITS=$(gh pr view $PR_NUMBER --json commits --jq '.commits[].message' || echo "[]")
+
+          # Join with newlines and write to file
+          echo "$COMMITS" > pr_commit_messages.txt
+
+          # Save multiline output as single string with delimiter
+          echo "commit_messages<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output commit messages
+        run: |
+          echo "Commit messages in this PR:"
+          echo "${{ steps.fetch_commits.outputs.commit_messages }}"
+
+      - name: Save commit messages to artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-commit-messages
+          path: pr_commit_messages.txt
